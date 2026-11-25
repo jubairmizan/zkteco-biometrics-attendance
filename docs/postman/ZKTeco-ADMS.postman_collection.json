@@ -1,0 +1,873 @@
+{
+  "info": {
+    "_postman_id": "241894ea-2f85-4327-88be-700518f1c11e",
+    "name": "ZKTeco ADMS",
+    "description": "Simulates a ZKTeco device in ADMS (push) mode talking to this app.\n\nSet `base_url` in the environment (for example `http://localhost:8000` with `php artisan serve`, or `http://192.168.200.209:7788`). Run the whole collection with the Collection Runner.\n\nPunch requests send REAL Telegram messages when TELEGRAM_BOT_TOKEN and TELEGRAM_ERROR_CHAT_ID are set. Every request also appears in storage/logs/requests-YYYY-MM-DD.log.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// {{now}}: current time in the device's format, YYYY-MM-DD HH:mm:ss",
+          "const d = new Date(), p = n => String(n).padStart(2, '0');",
+          "pm.variables.set('now', `${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`);",
+          "",
+          "// {{backlog}}: 200 punch lines for the large-batch request",
+          "const now = pm.variables.get('now');",
+          "pm.variables.set('backlog', Array.from({length: 200}, (_, i) => `${9000 + i}\\t${now}\\t${i % 2}\\t15\\t0`).join('\\n'));"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8000"
+    },
+    {
+      "key": "device_sn",
+      "value": "POSTMAN-TEST-01"
+    }
+  ],
+  "item": [
+    {
+      "name": "1. Device connection",
+      "item": [
+        {
+          "name": "1. Handshake (device boots)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "const body = pm.response.text();",
+                  "pm.test('Echoes the serial number', () => pm.expect(body).to.include('GET OPTION FROM: ' + pm.variables.get('device_sn')));",
+                  "pm.test('Asks for missing punches', () => pm.expect(body).to.include('ATTLOGStamp=None'));",
+                  "pm.test('Real-time push on', () => pm.expect(body).to.include('Realtime=1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&options=all&pushver=2.4.1&language=69",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "options",
+                  "value": "all"
+                },
+                {
+                  "key": "pushver",
+                  "value": "2.4.1"
+                },
+                {
+                  "key": "language",
+                  "value": "69"
+                }
+              ]
+            },
+            "description": "The first call a device makes. The reply holds its upload settings (ATTLOGStamp, Realtime, Delay, ...)."
+          }
+        },
+        {
+          "name": "2. Poll for commands (getrequest)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Reply is OK', () => pm.expect(pm.response.text().trim()).to.eql('OK'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/iclock/getrequest?SN={{device_sn}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "getrequest"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                }
+              ]
+            },
+            "description": "The device polls this every Delay seconds. No commands are queued, so the reply is OK."
+          }
+        },
+        {
+          "name": "3. Command result (devicecmd)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Reply is OK', () => pm.expect(pm.response.text().trim()).to.eql('OK'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/devicecmd?SN={{device_sn}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "devicecmd"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                }
+              ]
+            },
+            "description": "The device reports the result of a command here.",
+            "body": {
+              "mode": "raw",
+              "raw": "ID=1&Return=0&CMD=DATA",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Attendance punches",
+      "item": [
+        {
+          "name": "Check-In by face",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "One punch: PIN 1001, Check-In (status 0), Face (verify 15). Sends one Telegram message.",
+            "body": {
+              "mode": "raw",
+              "raw": "1001\t{{now}}\t0\t15\t0\t0\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Check-Out by fingerprint",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "PIN 1001, Check-Out (status 1), Fingerprint (verify 1).",
+            "body": {
+              "mode": "raw",
+              "raw": "1001\t{{now}}\t1\t1\t0\t0\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Batch of every status type",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 6 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 6'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Six punches, one per status: Check-In, Check-Out, Break-Out, Break-In, OT-In, OT-Out. Arrives as ONE Telegram message.",
+            "body": {
+              "mode": "raw",
+              "raw": "1001\t{{now}}\t0\t15\t0\t0\t0\n1002\t{{now}}\t1\t1\t0\t0\t0\n1003\t{{now}}\t2\t0\t0\t0\t0\n1004\t{{now}}\t3\t15\t0\t0\t0\n1005\t{{now}}\t4\t1\t0\t0\t0\n1006\t{{now}}\t5\t4\t0\t0\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Windows line endings (CRLF)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 2 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 2'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Some firmware separates lines with \\r\\n.",
+            "body": {
+              "mode": "raw",
+              "raw": "2001\t{{now}}\t0\t15\t0\r\n2002\t{{now}}\t1\t15\t0\r\n",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Only PIN and time (defaults)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Missing status/verify columns default to Check-In / Face.",
+            "body": {
+              "mode": "raw",
+              "raw": "3001\t{{now}}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "PIN 0 is valid",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Employee PIN 0 must be accepted, not reported as malformed.",
+            "body": {
+              "mode": "raw",
+              "raw": "0\t{{now}}\t0\t1\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Edge cases",
+      "item": [
+        {
+          "name": "Malformed line in a batch",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "The bad line is reported to Telegram as an error (via laravel-error-notifier); the good line is still saved.",
+            "body": {
+              "mode": "raw",
+              "raw": "garbage-line-without-tabs\n4001\t{{now}}\t0\t15\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Empty body",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 0 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 0'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Nothing is saved and no Telegram message is sent.",
+            "body": {
+              "mode": "raw",
+              "raw": "",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Other table (OPERLOG) is ignored",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Reply is OK', () => pm.expect(pm.response.text().trim()).to.eql('OK'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=OPERLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "OPERLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "Operation logs are acknowledged so the device doesn't resend them, then dropped.",
+            "body": {
+              "mode": "raw",
+              "raw": "OPLOG 4\t0\t{{now}}\t0\t0\t0\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "No serial number",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 1 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 1'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?table=ATTLOG",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                }
+              ]
+            },
+            "description": "Must not crash; Telegram shows the device as 'unknown'.",
+            "body": {
+              "mode": "raw",
+              "raw": "5001\t{{now}}\t0\t15\t0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Large backlog (200 punches)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
+                  "pm.test('Device is told 200 punch(es) were received', () => pm.expect(pm.response.text().trim()).to.eql('OK: 200'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=ATTLOG&Stamp=9999",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "ATTLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "9999"
+                }
+              ]
+            },
+            "description": "What a device sends after being offline. Telegram gets one message, cut on a whole line, ending '… and N more'.",
+            "body": {
+              "mode": "raw",
+              "raw": "{{backlog}}",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Old /api prefix returns 404",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 404', () => pm.response.to.have.status(404));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/api/iclock/cdata?SN={{device_sn}}&options=all",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "options",
+                  "value": "all"
+                }
+              ]
+            },
+            "description": "Routes moved to /iclock (the device can't add a path). This confirms the old URL is gone."
+          }
+        }
+      ]
+    }
+  ]
+}
