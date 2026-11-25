@@ -13,6 +13,32 @@ A comprehensive Laravel application for integrating with ZKTeco SpeedFace V3L bi
 - **Auto-sync**: Automatic synchronization every 1 minute via Laravel scheduler
 - **Device Management**: Test connections, get device info, and manage users
 
+## Quick start (ADMS push mode)
+
+The device sends each punch to this app as it happens (ZKTeco "ADMS" / push protocol). Punches are stored in
+`attendance_logs`, shown on the dashboard, and announced in Telegram.
+
+1. Set up `.env` (database, `APP_TIMEZONE` = the device's time zone, e.g. `Asia/Dhaka`, and optionally
+   `TELEGRAM_BOT_TOKEN` / `TELEGRAM_ERROR_CHAT_ID`), then run `php artisan migrate`.
+2. Create a dashboard login: set `ADMIN_NAME`, `ADMIN_EMAIL` and `ADMIN_PASSWORD` in `.env` and run
+   `php artisan db:seed` (leave `ADMIN_PASSWORD` empty to get a random one, printed once), or run
+   `php artisan user:create-admin` to be asked for the details. For sample users and fake punches on a local
+   copy: `php artisan db:seed --class=DemoDataSeeder`.
+3. Serve the app's `public/` folder on the address and port the device points at.
+4. On the device: **Comm. → Cloud Server Settings**: Server Mode `ADMS`, Server Address = this server's IP,
+   Server Port = the port from step 3. The device calls `/iclock/cdata`, `/iclock/getrequest` and `/iclock/devicecmd`.
+5. Open `/attendance` and log in. The device appears under **Devices** on its first connection.
+
+Names: when a device first connects it is asked for its user list, and every user enrolled or edited on the
+device is sent automatically. Names, card numbers and roles appear under **Employees**, where department,
+designation, phone and email can be added. Use **Fetch names from devices** to ask again. Passwords and
+fingerprint / face templates are never stored or logged.
+Every request is logged to `storage/logs/requests-YYYY-MM-DD.log`; a Postman collection that simulates a device
+is in `docs/postman/`. Run the tests with `php artisan test` (they use an in-memory SQLite database).
+
+The sections below describe the older pull mode (the server connects to the device on UDP 4370), which is no
+longer scheduled; `php artisan attendance:sync` still runs it by hand.
+
 ## Requirements
 
 - PHP 8.1 or higher

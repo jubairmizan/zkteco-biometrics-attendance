@@ -2,36 +2,32 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\AttendanceLog;
+use App\Models\Device;
+use App\Models\DeviceCommand;
+use App\Services\AdmsPunchRecorder;
+use App\Services\AdmsUserRecorder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Msahidurr\ErrorNotifier\Facades\ErrorNotifier;
 use Throwable;
 
+/**
+ * ZKTeco ADMS (push) protocol: the device calls these endpoints; see routes/iclock.php.
+ */
 class ZktecoAdmsController extends Controller
 {
     /** Telegram rejects messages over 4096 characters; keep a margin for the "more" line. */
     private const TELEGRAM_MAX_LENGTH = 3900;
 
-    private const STATUS_LABELS = [
-        '0' => 'Check-In',
-        '1' => 'Check-Out',
-        '2' => 'Break-Out',
-        '3' => 'Break-In',
-        '4' => 'OT-In',
-        '5' => 'OT-Out',
-    ];
+    /** Upload tables that can carry user records (name, card, privilege). */
+    private const USER_TABLES = ['OPERLOG', 'USERINFO', 'USER'];
 
-    private const VERIFY_LABELS = [
-        '0'  => 'Password',
-        '1'  => 'Fingerprint',
-        '15' => 'Face',
-    ];
-
-    public function cdata(Request $request)
+    public function cdata(Request $request, AdmsPunchRecorder $recorder, AdmsUserRecorder $users)
     {
         $deviceSn = $this->deviceSn($request);
+        $device = $this->touchDevice($request, $deviceSn);
 
         // 1. Handshake when device boots or connects: the device reads its upload settings from this reply
         if ($request->isMethod('get')) {
@@ -40,125 +36,172 @@ class ZktecoAdmsController extends Controller
             return $this->plain(implode("\n", [
                 "GET OPTION FROM: {$deviceSn}",
                 'ATTLOGStamp=None',   // ask for any punches the server hasn't received yet
-                'OPERLOGStamp=9999',  // skip operation logs
+                'OPERLOGStamp=None',  // operation log: carries user records (names) when someone is enrolled or edited
                 'ATTPHOTOStamp=9999', // skip punch photos
                 'ErrorDelay=60',      // seconds before retrying after a failed connection
                 'Delay=30',           // seconds between getrequest polls
                 'TransTimes=00:00;14:05',
                 'TransInterval=1',
-                'TransFlag=TransData AttLog',
+                // Upload punches, the operation log and user details. Fingerprint / face templates are left out.
+                'TransFlag=TransData AttLog OpLog EnrollUser ChgUser',
                 'Realtime=1',         // push each punch as soon as it happens
                 'Encrypt=0',
             ]) . "\n");
         }
 
-        // 2. Receive real-time attendance punches
-        if ($request->query('table') !== 'ATTLOG') {
-            // OPERLOG, ATTPHOTO, BIODATA, ...: acknowledge so the device doesn't resend them
+        $table = strtoupper((string) (is_string($request->query('table')) ? $request->query('table') : ''));
+
+        // 2. User records (names) inside the operation log
+        if (in_array($table, self::USER_TABLES, true)) {
+            $users->record($deviceSn, $request->getContent());
+
             return $this->plain("OK\n");
         }
 
-        $lines = preg_split('/\r\n|\r|\n/', trim($request->getContent()));
-        $punches = [];
-
-        foreach ($lines as $line) {
-            $line = trim($line);
-            if ($line === '') {
-                continue;
-            }
-
-            // ZKTeco tab-separated format: PIN \t Timestamp \t Status \t VerifyMode \t WorkCode
-            $cols = array_map('trim', explode("\t", $line));
-
-            $employeePin = $cols[0] ?? '';
-            $punchedAt   = $cols[1] ?? '';
-            $status      = ($cols[2] ?? '') !== '' ? $cols[2] : '0';  // 0 = Check-In, 1 = Check-Out
-            $verifyMode  = ($cols[3] ?? '') !== '' ? $cols[3] : '15'; // 1 = Fingerprint, 15 = Face
-
-            // PIN "0" is valid, so compare with '' rather than using a falsy check
-            if ($employeePin === '' || $punchedAt === '') {
-                // Malformed line: report it to Telegram, keep processing the rest of the batch
-                ErrorNotifier::report(new \UnexpectedValueException(
-                    "ZKTeco ADMS: malformed ATTLOG line from device {$deviceSn}: " . json_encode($line)
-                ));
-                continue;
-            }
-
-            try {
-                // Log to storage/logs/laravel.log for instant verification
-                Log::info('ZKTeco Punch', [
-                    'sn'          => $deviceSn,
-                    'pin'         => $employeePin,
-                    'punched_at'  => $punchedAt,
-                    'status'      => $status,
-                    'verify_mode' => $verifyMode,
-                ]);
-
-                $punches[] = compact('employeePin', 'punchedAt', 'status', 'verifyMode');
-
-                // Example DB insert (replace table/columns with yours):
-                /*
-                DB::table('attendances')->insertOrIgnore([
-                    'employee_pin' => $employeePin,
-                    'punched_at'   => $punchedAt,
-                    'status'       => $status,
-                    'device_sn'    => $deviceSn,
-                    'created_at'   => now(),
-                    'updated_at'   => now(),
-                ]);
-                */
-            } catch (Throwable $e) {
-                // One failing punch must not drop the whole batch; send it to Telegram and move on
-                Log::error('ZKTeco punch failed', [
-                    'sn'    => $deviceSn,
-                    'line'  => $line,
-                    'error' => $e->getMessage(),
-                ]);
-                ErrorNotifier::report($e);
-            }
+        // 3. Receive attendance punches
+        if ($table !== 'ATTLOG') {
+            // ATTPHOTO, BIODATA, ...: acknowledge so the device doesn't resend them
+            return $this->plain("OK\n");
         }
 
-        $this->sendPunchesToTelegram($deviceSn, $punches);
+        if ($device === null) {
+            // The database is unreachable: tell the device to keep the punches and try again later
+            return $this->plain("ERROR\n", 500);
+        }
 
-        return $this->plain('OK: ' . count($punches) . "\n");
+        $result = $recorder->record($device, $request->ip(), $request->getContent());
+
+        $this->sendPunchesToTelegram($deviceSn, $result['stored']);
+
+        if ($result['failed'] > 0) {
+            // Some punches weren't saved. A non-200 reply makes the device send the whole upload again;
+            // punches already saved are skipped as duplicates, so nothing is stored twice.
+            return $this->plain("ERROR: {$result['failed']} punch(es) not saved\n", 500);
+        }
+
+        return $this->plain('OK: ' . $result['accepted'] . "\n");
     }
 
     /**
-     * The device polls this for pending commands. Nothing is queued, so it is told there's nothing to do.
+     * The device polls this for pending commands. Each is sent once, as "C:<id>:<command>".
      */
     public function getrequest(Request $request)
     {
+        $deviceSn = $this->deviceSn($request);
+        $this->touchDevice($request, $deviceSn);
+
+        try {
+            $commands = DeviceCommand::where('device_sn', $deviceSn)
+                ->where('status', 'pending')
+                ->orderBy('id')
+                ->limit(10)
+                ->get();
+
+            if ($commands->isNotEmpty()) {
+                DeviceCommand::whereIn('id', $commands->pluck('id'))->update(['status' => 'sent', 'sent_at' => now()]);
+
+                return $this->plain($commands->map(fn (DeviceCommand $c) => "C:{$c->id}:{$c->command}")->implode("\n") . "\n");
+            }
+        } catch (Throwable $e) {
+            Log::error('ZKTeco command lookup failed', ['sn' => $deviceSn, 'error' => $e->getMessage()]);
+        }
+
         return $this->plain("OK\n");
     }
 
     /**
-     * The device reports the result of a command here.
+     * The device reports command results here, one per line: ID=<id>&Return=<code>&CMD=<name>
      */
     public function devicecmd(Request $request)
     {
+        $deviceSn = $this->deviceSn($request);
+        $this->touchDevice($request, $deviceSn);
+
+        foreach (preg_split('/\r\n|\r|\n/', trim($request->getContent())) as $line) {
+            parse_str(trim($line), $result);
+
+            if (! isset($result['ID']) || ! ctype_digit((string) $result['ID'])) {
+                continue;
+            }
+
+            $code = isset($result['Return']) && is_numeric($result['Return']) ? (int) $result['Return'] : null;
+
+            DeviceCommand::where('id', $result['ID'])
+                ->where('device_sn', $deviceSn) // a device can only close its own commands
+                ->update([
+                    'status'       => $code !== null && $code < 0 ? 'failed' : 'done',
+                    'return_code'  => $code,
+                    'completed_at' => now(),
+                ]);
+        }
+
         return $this->plain("OK\n");
     }
 
     /**
-     * Send one Telegram message per upload, listing every punch in it.
-     * A Telegram failure is only logged: it must never affect the device's response.
+     * Newer firmware answers "DATA QUERY USERINFO" here instead of in cdata:
+     * POST /iclock/querydata?SN=...&type=tabledata&tablename=user&count=N
      */
-    private function sendPunchesToTelegram(string $deviceSn, array $punches): void
+    public function querydata(Request $request, AdmsUserRecorder $users)
+    {
+        $deviceSn = $this->deviceSn($request);
+        $this->touchDevice($request, $deviceSn);
+
+        $tableName = $request->query('tablename');
+        $tableName = is_string($tableName) ? strtolower($tableName) : '';
+
+        if ($tableName === 'user') {
+            $saved = $users->record($deviceSn, $request->getContent());
+
+            return $this->plain("user={$saved}\n");
+        }
+
+        // Other tables (fingerprint / face templates, photos): acknowledged, not stored
+        return $this->plain(($tableName !== '' ? $tableName : 'OK') . "=0\n");
+    }
+
+    /**
+     * Mark the device as seen. Never lets a database error break the reply to the device.
+     */
+    private function touchDevice(Request $request, string $deviceSn): ?Device
+    {
+        try {
+            $pushVersion = $request->query('pushver');
+
+            return Device::touchFromRequest($deviceSn, $request->ip(), is_string($pushVersion) ? $pushVersion : null);
+        } catch (Throwable $e) {
+            Log::error('ZKTeco device update failed', ['sn' => $deviceSn, 'error' => $e->getMessage()]);
+            ErrorNotifier::report($e);
+
+            return null;
+        }
+    }
+
+    /**
+     * Send one Telegram message per upload, listing every newly stored punch.
+     * Punches the device re-sends are not repeated. A Telegram failure is only logged.
+     *
+     * @param  array<int, AttendanceLog>  $logs
+     */
+    private function sendPunchesToTelegram(string $deviceSn, array $logs): void
     {
         $token  = config('error-notifier.drivers.telegram.bot_token');
         $chatId = config('error-notifier.drivers.telegram.chat_id');
 
-        if (empty($punches) || ! $token || ! $chatId) {
+        if (empty($logs) || ! $token || ! $chatId) {
             return;
         }
+
+        (new \Illuminate\Database\Eloquent\Collection($logs))->load(['user', 'employee']);
 
         $text = "ZKTeco Punch (device {$deviceSn})";
         $sent = 0;
 
-        foreach ($punches as $p) {
-            $type   = self::STATUS_LABELS[$p['status']] ?? "Status {$p['status']}";
-            $method = self::VERIFY_LABELS[$p['verifyMode']] ?? "Mode {$p['verifyMode']}";
-            $row    = "\n• PIN {$p['employeePin']} | {$p['punchedAt']} | {$type} | {$method}";
+        foreach ($logs as $log) {
+            $name = $log->person_name;
+            $who = $name ? "{$name} (PIN {$log->device_user_id})" : "PIN {$log->device_user_id}";
+            $method = ucfirst(str_replace('_', ' ', (string) $log->verification_type));
+            $row = "\n• {$who} | {$log->punch_time->format('Y-m-d H:i:s')} | {$log->punch_type_label} | {$method}";
 
             // Stop on a whole line, and say how many were left out, instead of cutting mid-line
             if (mb_strlen($text . $row) > self::TELEGRAM_MAX_LENGTH) {
@@ -169,8 +212,8 @@ class ZktecoAdmsController extends Controller
             $sent++;
         }
 
-        if ($sent < count($punches)) {
-            $text .= "\n… and " . (count($punches) - $sent) . ' more (see laravel.log)';
+        if ($sent < count($logs)) {
+            $text .= "\n… and " . (count($logs) - $sent) . ' more (see the dashboard)';
         }
 
         try {
@@ -198,11 +241,11 @@ class ZktecoAdmsController extends Controller
     {
         $sn = $request->query('SN');
 
-        return is_string($sn) && $sn !== '' ? $sn : 'unknown';
+        return is_string($sn) && $sn !== '' ? mb_substr($sn, 0, 191) : 'unknown';
     }
 
-    private function plain(string $body)
+    private function plain(string $body, int $status = 200)
     {
-        return response($body, 200)->header('Content-Type', 'text/plain');
+        return response($body, $status)->header('Content-Type', 'text/plain');
     }
 }

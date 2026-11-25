@@ -14,6 +14,11 @@ class UserSeeder extends Seeder
      */
     public function run(): void
     {
+        // Every account below has the password "password"
+        if (app()->environment('production')) {
+            throw new \RuntimeException('UserSeeder creates logins with the password "password"; it does not run in production.');
+        }
+
         // Create admin user
         User::create([
             'name' => 'Admin User',

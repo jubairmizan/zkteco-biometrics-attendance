@@ -3,120 +3,75 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceLog;
+use App\Models\Device;
 use App\Models\User;
-use App\Services\ZKTecoService;
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\View\View;
 use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 
 class AttendanceController extends Controller
 {
-    private $zkTecoService;
-
-    public function __construct()
-    {
-        $this->zkTecoService = new ZKTecoService();
-    }
-
     /**
-     * Display attendance logs dashboard
+     * Dashboard: devices, today's numbers, and the filterable punch list.
      */
-    public function index(): View
+    public function index(Request $request): View
     {
-        $logs = AttendanceLog::with('user')
-            ->orderBy('punch_time', 'desc')
-            ->paginate(20);
+        $filters = $this->filters($request);
 
-        return view('attendance.index', compact('logs'));
-    }
+        $logs = AttendanceLog::with(['user', 'employee'])
+            ->filter($filters)
+            ->orderByDesc('punch_time')
+            ->orderByDesc('id')
+            ->paginate(25)
+            ->withQueryString();
 
-    /**
-     * Test device connection
-     */
-    public function testConnection(): JsonResponse
-    {
-        $result = $this->zkTecoService->testConnection();
-        return response()->json($result);
-    }
+        $today = AttendanceLog::whereBetween('punch_time', [now()->startOfDay(), now()->endOfDay()]);
 
-    /**
-     * Get device information
-     */
-    public function getDeviceInfo(): JsonResponse
-    {
-        $info = $this->zkTecoService->getDeviceInfo();
-        return response()->json($info);
-    }
+        $stats = [
+            'total'           => AttendanceLog::count(),
+            'today'           => (clone $today)->count(),
+            'today_employees' => (clone $today)->distinct()->count('device_user_id'),
+        ];
 
-    /**
-     * Sync attendance logs from device
-     */
-    public function syncLogs(): JsonResponse
-    {
-        $result = $this->zkTecoService->syncAttendanceLogs();
-        return response()->json([
-            'success' => true,
-            'message' => "Synced {$result['synced_count']} out of {$result['total_logs']} logs",
-            'data' => $result
+        return view('attendance.index', [
+            'logs'       => $logs,
+            'filters'    => $filters,
+            'stats'      => $stats,
+            'devices'    => Device::orderByDesc('last_seen_at')->get(),
+            'punchTypes' => AttendanceLog::PUNCH_TYPES,
+            'latestId'   => (int) AttendanceLog::max('id'),
         ]);
     }
 
     /**
-     * Get device users
+     * Polled by the dashboard to notice new punches without reloading.
      */
-    public function getDeviceUsers(): JsonResponse
+    public function latest(): JsonResponse
     {
-        $users = $this->zkTecoService->getDeviceUsers();
-        return response()->json($users);
-    }
-
-    /**
-     * Sync device users to database
-     */
-    public function syncDeviceUsers(): JsonResponse
-    {
-        $result = $this->zkTecoService->syncDeviceUsers();
         return response()->json([
-            'success' => true,
-            'message' => 'Device users synchronized successfully',
-            'data' => $result
+            'latest_id' => (int) AttendanceLog::max('id'),
+            'today'     => AttendanceLog::whereBetween('punch_time', [now()->startOfDay(), now()->endOfDay()])->count(),
+            'devices'   => Device::orderByDesc('last_seen_at')->get()->map(fn (Device $d) => [
+                'serial_number' => $d->serial_number,
+                'online'        => $d->isOnline(),
+                'last_seen'     => $d->last_seen_at?->diffForHumans(),
+            ]),
         ]);
     }
 
     /**
-     * Get attendance logs with filters
+     * Get attendance logs with filters (JSON).
      */
     public function getLogs(Request $request): JsonResponse
     {
-        $query = AttendanceLog::with('user');
+        $perPage = min(max((int) $request->get('per_page', 20), 1), 200);
 
-        // Filter by date range
-        if ($request->has('start_date')) {
-            $query->where('punch_time', '>=', Carbon::parse($request->start_date));
-        }
-
-        if ($request->has('end_date')) {
-            $query->where('punch_time', '<=', Carbon::parse($request->end_date)->endOfDay());
-        }
-
-        // Filter by user
-        if ($request->has('user_id')) {
-            $query->where('user_id', $request->user_id);
-        }
-
-        // Filter by device
-        if ($request->has('device_ip')) {
-            $query->where('device_ip', $request->device_ip);
-        }
-
-        // Filter by punch type
-        if ($request->has('punch_type')) {
-            $query->where('punch_type', $request->punch_type);
-        }
-
-        $logs = $query->orderBy('punch_time', 'desc')
-            ->paginate($request->get('per_page', 20));
+        $logs = AttendanceLog::with(['user', 'employee'])
+            ->filter($this->filters($request))
+            ->orderByDesc('punch_time')
+            ->paginate($perPage);
 
         return response()->json($logs);
     }
@@ -124,35 +79,35 @@ class AttendanceController extends Controller
     /**
      * Get attendance summary for a user
      */
-    public function getUserSummary(Request $request, $userId): JsonResponse
+    public function getUserSummary(Request $request, User $user): JsonResponse
     {
-        $startDate = $request->get('start_date', Carbon::now()->startOfMonth());
-        $endDate = $request->get('end_date', Carbon::now()->endOfMonth());
+        $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'end_date'   => ['nullable', 'date', 'after_or_equal:start_date'],
+        ]);
 
-        $user = User::findOrFail($userId);
-        
-        $logs = AttendanceLog::where('user_id', $userId)
+        // The whole end day is included (a plain date would stop at 00:00:00)
+        $startDate = $request->filled('start_date') ? Carbon::parse($request->start_date)->startOfDay() : now()->startOfMonth();
+        $endDate = $request->filled('end_date') ? Carbon::parse($request->end_date)->endOfDay() : now()->endOfMonth();
+
+        $logs = AttendanceLog::where('user_id', $user->id)
             ->whereBetween('punch_time', [$startDate, $endDate])
             ->orderBy('punch_time')
             ->get();
 
-        $summary = [
-            'user' => $user,
-            'period' => [
-                'start' => $startDate,
-                'end' => $endDate
-            ],
-            'total_days' => $logs->groupBy(function($log) {
-                return $log->punch_time->format('Y-m-d');
-            })->count(),
-            'total_check_ins' => $logs->where('punch_type', 'check_in')->count(),
-            'total_check_outs' => $logs->where('punch_type', 'check_out')->count(),
-            'logs' => $logs->groupBy(function($log) {
-                return $log->punch_time->format('Y-m-d');
-            })
-        ];
+        $byDay = $logs->groupBy(fn (AttendanceLog $log) => $log->punch_time->format('Y-m-d'));
 
-        return response()->json($summary);
+        return response()->json([
+            'user' => $user->only(['id', 'name', 'email', 'device_user_id', 'employee_id']),
+            'period' => [
+                'start' => $startDate->toDateString(),
+                'end'   => $endDate->toDateString(),
+            ],
+            'total_days'       => $byDay->count(),
+            'total_check_ins'  => $logs->where('punch_type', 'check_in')->count(),
+            'total_check_outs' => $logs->where('punch_type', 'check_out')->count(),
+            'logs'             => $byDay,
+        ]);
     }
 
     /**
@@ -160,104 +115,81 @@ class AttendanceController extends Controller
      */
     public function markAsProcessed(Request $request): JsonResponse
     {
-        $logIds = $request->input('log_ids', []);
-        
-        AttendanceLog::whereIn('id', $logIds)
-            ->update(['is_processed' => true]);
+        $validated = $request->validate([
+            'log_ids'   => ['required', 'array', 'max:1000'],
+            'log_ids.*' => ['integer'],
+        ]);
+
+        $count = AttendanceLog::whereIn('id', $validated['log_ids'])->update(['is_processed' => true]);
 
         return response()->json([
             'success' => true,
             'message' => 'Logs marked as processed',
-            'processed_count' => count($logIds)
+            'processed_count' => $count,
         ]);
     }
 
     /**
-     * Clear attendance logs from device
-     */
-    public function clearDeviceLogs(): JsonResponse
-    {
-        $result = $this->zkTecoService->clearAttendanceLogs();
-        
-        return response()->json([
-            'success' => $result,
-            'message' => $result ? 'Device logs cleared successfully' : 'Failed to clear device logs'
-        ]);
-    }
-
-    /**
-     * Real-time sync endpoint (can be called via AJAX polling)
-     */
-    public function realtimeSync(): JsonResponse
-    {
-        $result = $this->zkTecoService->syncAttendanceLogs();
-        
-        return response()->json([
-            'success' => true,
-            'new_logs' => $result['synced_count'],
-            'timestamp' => Carbon::now()->toISOString()
-        ]);
-    }
-
-    /**
-     * Export attendance logs to CSV
+     * Export the filtered attendance logs to CSV.
      */
     public function exportLogs(Request $request)
     {
-        $query = AttendanceLog::with('user');
+        $query = AttendanceLog::with(['user', 'employee'])
+            ->filter($this->filters($request))
+            ->orderBy('punch_time');
 
-        // Apply filters
-        if ($request->has('start_date')) {
-            $query->where('punch_time', '>=', Carbon::parse($request->start_date));
-        }
+        $filename = 'attendance_logs_' . now()->format('Y_m_d_H_i_s') . '.csv';
 
-        if ($request->has('end_date')) {
-            $query->where('punch_time', '<=', Carbon::parse($request->end_date)->endOfDay());
-        }
-
-        $logs = $query->orderBy('punch_time')->get();
-
-        $filename = 'attendance_logs_' . Carbon::now()->format('Y_m_d_H_i_s') . '.csv';
-        
-        $headers = [
-            'Content-Type' => 'text/csv',
-            'Content-Disposition' => 'attachment; filename="' . $filename . '"',
-        ];
-
-        $callback = function() use ($logs) {
+        return response()->streamDownload(function () use ($query) {
             $file = fopen('php://output', 'w');
-            
-            // CSV headers
+
             fputcsv($file, [
-                'ID',
-                'User Name',
-                'Device User ID',
-                'Device IP',
-                'Punch Time',
-                'Punch Type',
-                'Verification Type',
-                'Work Code',
-                'Is Processed'
+                'ID', 'Employee', 'Department', 'PIN', 'Punch Time', 'Punch Type', 'Verification', 'Device SN', 'Device IP', 'Processed',
             ]);
 
-            // CSV data
-            foreach ($logs as $log) {
-                fputcsv($file, [
-                    $log->id,
-                    $log->user ? $log->user->name : 'Unknown',
-                    $log->device_user_id,
-                    $log->device_ip,
-                    $log->punch_time->format('Y-m-d H:i:s'),
-                    $log->punch_type,
-                    $log->verification_type,
-                    $log->work_code,
-                    $log->is_processed ? 'Yes' : 'No'
-                ]);
-            }
+            // Chunked so a large export doesn't load every row into memory
+            $query->chunk(1000, function ($logs) use ($file) {
+                foreach ($logs as $log) {
+                    fputcsv($file, [
+                        $log->id,
+                        $this->csvSafe($log->person_name ?? ''),
+                        $this->csvSafe((string) $log->employee?->department),
+                        $this->csvSafe($log->device_user_id),
+                        $log->punch_time->format('Y-m-d H:i:s'),
+                        $log->punch_type_label,
+                        $log->verification_type,
+                        $this->csvSafe((string) $log->device_sn),
+                        $log->device_ip,
+                        $log->is_processed ? 'Yes' : 'No',
+                    ]);
+                }
+            });
 
             fclose($file);
-        };
+        }, $filename, ['Content-Type' => 'text/csv']);
+    }
 
-        return response()->stream($callback, 200, $headers);
+    /**
+     * Validated filter values from the query string.
+     */
+    private function filters(Request $request): array
+    {
+        return $request->validate([
+            'start_date' => ['nullable', 'date'],
+            'end_date'   => ['nullable', 'date'],
+            'search'     => ['nullable', 'string', 'max:100'],
+            'punch_type' => ['nullable', Rule::in(array_keys(AttendanceLog::PUNCH_TYPES))],
+            'device_sn'  => ['nullable', 'string', 'max:191'],
+            'device_ip'  => ['nullable', 'string', 'max:45'],
+            'user_id'    => ['nullable', 'integer'],
+        ]);
+    }
+
+    /**
+     * Stop a value from the device (PIN, name, serial) running as a formula when the CSV is opened in Excel.
+     */
+    private function csvSafe(string $value): string
+    {
+        return preg_match('/^[=+\-@\t\r]/', $value) ? "'" . $value : $value;
     }
 }

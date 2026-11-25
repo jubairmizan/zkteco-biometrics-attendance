@@ -18,3 +18,4 @@ use Illuminate\Support\Facades\Route;
 Route::match(['get', 'post'], '/iclock/cdata', [ZktecoAdmsController::class, 'cdata']);
 Route::get('/iclock/getrequest', [ZktecoAdmsController::class, 'getrequest']);
 Route::post('/iclock/devicecmd', [ZktecoAdmsController::class, 'devicecmd']);
+Route::post('/iclock/querydata', [ZktecoAdmsController::class, 'querydata']);

@@ -16,8 +16,13 @@ use Throwable;
  */
 class LogIncomingRequests
 {
-    /** Only these paths have their body logged: other bodies can hold passwords. */
+    /**
+     * Only device requests have their body logged: other bodies can hold passwords. Of those, user and
+     * template uploads are left out too, since they can carry device passwords and fingerprint / face data.
+     */
     private const BODY_LOGGED_PATHS = ['iclock/*'];
+
+    private const BODY_LOGGED_TABLES = ['ATTLOG'];
 
     private const MAX_BODY_LENGTH = 5000;
 
@@ -53,7 +58,9 @@ class LogIncomingRequests
             ];
 
             if ($request->is(...self::BODY_LOGGED_PATHS)) {
-                $body = $request->getContent();
+                $body = $this->deviceBodyIsSafe($request)
+                    ? $request->getContent()
+                    : '[not logged: may contain passwords or biometric data, ' . strlen($request->getContent()) . ' bytes]';
                 $context['body'] = mb_strlen($body) > self::MAX_BODY_LENGTH
                     ? mb_substr($body, 0, self::MAX_BODY_LENGTH) . '… [' . mb_strlen($body) . ' chars total]'
                     : $body;
@@ -64,5 +71,16 @@ class LogIncomingRequests
         } catch (Throwable $e) {
             // Logging must never break a request
         }
+    }
+
+    private function deviceBodyIsSafe(Request $request): bool
+    {
+        if ($request->is('iclock/getrequest', 'iclock/devicecmd') || $request->isMethod('get')) {
+            return true;
+        }
+
+        $table = $request->query('table');
+
+        return $request->is('iclock/cdata') && is_string($table) && in_array(strtoupper($table), self::BODY_LOGGED_TABLES, true);
     }
 }

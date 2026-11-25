@@ -118,16 +118,13 @@ class ZKTecoService
                     $updatedCount++;
                     Log::info("Updated existing user: {$deviceUser['name']} (ID: {$deviceUser['userid']})");
                 } else {
-                    // Create new user
-                    $email = strtolower(str_replace(' ', '.', $deviceUser['name'])) . '@limerick.com';
-                    $staffEmailChk = User::where("email", $email)->first();
-                    if (!is_null($staffEmailChk)) {
-                        $email = strtolower(str_replace(' ', '.', $deviceUser['name'])) . rand(1000, 9999) . '@limerick.com';
-                    }
+                    // Create new user. The email is built from the PIN, which is unique, so it can't clash
+                    // the way a name-based one did. The password is random: these are employee records,
+                    // not dashboard logins (a shared default password would let anyone log in as them).
                     User::create([
-                        'name' => $deviceUser['name'],
-                        'email' => strtolower(str_replace(' ', '.', $deviceUser['name'])) . '@limerick.com', // Generate email
-                        'password' => bcrypt('12345678'), // Default password
+                        'name' => $deviceUser['name'] ?: "Employee {$deviceUser['userid']}",
+                        'email' => 'device-user-' . $deviceUser['userid'] . '@' . config('zkteco.user_mapping.email_domain', 'device.local'),
+                        'password' => \Illuminate\Support\Str::random(40),
                         'device_user_id' => $deviceUser['userid'],
                         'employee_id' => $deviceUser['userid'],
                     ]);
@@ -219,18 +216,7 @@ class ZKTecoService
         // This is a basic implementation - you may need to adjust based on your device configuration
         $status = $log['status'] ?? 0;
 
-        switch ($status) {
-            case 0:
-                return 'check_in';
-            case 1:
-                return 'check_out';
-            case 2:
-                return 'break_out';
-            case 3:
-                return 'break_in';
-            default:
-                return 'check_in';
-        }
+        return config('zkteco.punch_types')[(int) $status] ?? 'check_in';
     }
 
     /**
@@ -238,18 +224,7 @@ class ZKTecoService
      */
     private function getVerificationType($type): ?string
     {
-        switch ($type) {
-            case 1:
-                return 'fingerprint';
-            case 15:
-                return 'face';
-            case 2:
-                return 'password';
-            case 3:
-                return 'card';
-            default:
-                return 'unknown';
-        }
+        return config('zkteco.verification_types')[(int) $type] ?? 'unknown';
     }
 
     /**
@@ -354,7 +329,8 @@ class ZKTecoService
 
         // Ensure it's valid UTF-8
         if (!mb_check_encoding($sanitized, 'UTF-8')) {
-            $sanitized = utf8_encode($sanitized);
+            // utf8_encode() is deprecated in PHP 8.2
+            $sanitized = mb_convert_encoding($sanitized, 'UTF-8', 'ISO-8859-1');
         }
 
         return trim($sanitized);

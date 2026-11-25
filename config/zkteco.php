@@ -59,6 +59,9 @@ return [
         
         // Create new users if not found in database
         'auto_create_users' => env('ZKTECO_AUTO_CREATE_USERS', false),
+
+        // Domain for the placeholder email of users created from device users
+        'email_domain' => env('ZKTECO_USER_EMAIL_DOMAIN', 'device.local'),
     ],
 
     // Punch type mapping

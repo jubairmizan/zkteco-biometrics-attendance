@@ -12,11 +12,9 @@ class Kernel extends ConsoleKernel
      */
     protected function schedule(Schedule $schedule): void
     {
-        // Sync attendance logs from ZKTeco device every minute
-        $schedule->command('attendance:sync')
-                 ->everyMinute()
-                 ->withoutOverlapping()
-                 ->runInBackground();
+        // The device pushes punches over ADMS (routes/iclock.php), so the old every-minute UDP pull is off.
+        // To pull from a device in the old way instead, run `php artisan attendance:sync` or re-enable:
+        // $schedule->command('attendance:sync')->everyMinute()->withoutOverlapping()->runInBackground();
     }
 
     /**

@@ -17,3 +17,6 @@ yarn-error.log
 /.fleet
 /.idea
 /.vscode
+
+# curl cookie jars (can hold live session cookies)
+cookies.txt

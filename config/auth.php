@@ -112,4 +112,20 @@ return [
 
     'password_timeout' => 10800,
 
+    /*
+    |--------------------------------------------------------------------------
+    | Seeded Dashboard Login
+    |--------------------------------------------------------------------------
+    |
+    | Used by `php artisan db:seed` (Database\Seeders\AdminUserSeeder) to create the first
+    | dashboard login. Leave ADMIN_PASSWORD empty to have a random one generated and printed once.
+    |
+    */
+
+    'seed_admin' => [
+        'name' => env('ADMIN_NAME', 'Admin'),
+        'email' => env('ADMIN_EMAIL', 'admin@example.com'),
+        'password' => env('ADMIN_PASSWORD'),
+    ],
+
 ];

@@ -97,8 +97,7 @@
                 "type": "text/javascript",
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
-                  "pm.test('Plain text reply', () => pm.expect(pm.response.headers.get('Content-Type')).to.include('text/plain'));",
-                  "pm.test('Reply is OK', () => pm.expect(pm.response.text().trim()).to.eql('OK'));"
+                  "pm.test('OK or a command', () => pm.expect(pm.response.text()).to.match(/^(OK|C:\\d+:)/));"
                 ]
               }
             }
@@ -122,7 +121,7 @@
                 }
               ]
             },
-            "description": "The device polls this every Delay seconds. No commands are queued, so the reply is OK."
+            "description": "The device polls this every Delay seconds. A new device's first poll gets 'C:<id>:DATA QUERY USERINFO' (send your user list); after that the reply is OK."
           }
         },
         {
@@ -865,6 +864,188 @@
               ]
             },
             "description": "Routes moved to /iclock (the device can't add a path). This confirms the old URL is gone."
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. Employee names",
+      "item": [
+        {
+          "name": "Users in operation log (OPERLOG)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Reply is OK', () => pm.expect(pm.response.text().trim()).to.eql('OK'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/cdata?SN={{device_sn}}&table=OPERLOG&Stamp=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "cdata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "table",
+                  "value": "OPERLOG"
+                },
+                {
+                  "key": "Stamp",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "How most firmware sends a user when they are enrolled or edited. Name, card and privilege are saved to Employees; the password and the FP template line are dropped.",
+            "body": {
+              "mode": "raw",
+              "raw": "USER PIN=1001\tName=Rahim Uddin\tPri=0\tPasswd=\tCard=[0012345678]\tGrp=1\tTZ=0000000000000000\nUSER PIN=1002\tName=Karim Ahmed\tPri=14\tPasswd=\tCard=[0000000000]\tGrp=1\nFP PIN=1001\tFID=6\tSize=4\tValid=1\tTMP=AAAA",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Reply to DATA QUERY USERINFO (querydata)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Counts saved users', () => pm.expect(pm.response.text().trim()).to.eql('user=2'));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/querydata?SN={{device_sn}}&type=tabledata&tablename=user&count=2&packcnt=1&packidx=1",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "querydata"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                },
+                {
+                  "key": "type",
+                  "value": "tabledata"
+                },
+                {
+                  "key": "tablename",
+                  "value": "user"
+                },
+                {
+                  "key": "count",
+                  "value": "2"
+                },
+                {
+                  "key": "packcnt",
+                  "value": "1"
+                },
+                {
+                  "key": "packidx",
+                  "value": "1"
+                }
+              ]
+            },
+            "description": "How newer firmware answers the 'send your user list' command.",
+            "body": {
+              "mode": "raw",
+              "raw": "user uid=3\tcardno=99887766\tpin=1003\tpassword=\tgroup=1\tstarttime=0\tendtime=0\tname=Nusrat Jahan\tprivilege=0\nuser uid=4\tcardno=\tpin=1004\tpassword=\tgroup=1\tname=Farhana Akter\tprivilege=0",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Command result (devicecmd)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status 200', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "text/plain"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/iclock/devicecmd?SN={{device_sn}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "iclock",
+                "devicecmd"
+              ],
+              "query": [
+                {
+                  "key": "SN",
+                  "value": "{{device_sn}}"
+                }
+              ]
+            },
+            "description": "Closes command 1. The ID comes from the 'C:<id>:DATA QUERY USERINFO' line that getrequest returns to a new device.",
+            "body": {
+              "mode": "raw",
+              "raw": "ID=1&Return=0&CMD=DATA",
+              "options": {
+                "raw": {
+                  "language": "text"
+                }
+              }
+            }
           }
         }
       ]

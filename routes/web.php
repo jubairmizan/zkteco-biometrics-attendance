@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\AttendanceController;
 use App\Http\Controllers\AuthController;
+use App\Http\Controllers\EmployeeController;
 
 /*
 |--------------------------------------------------------------------------
@@ -22,32 +23,22 @@ Route::get('/', function () {
 
 // Authentication Routes
 Route::get('/login', [AuthController::class, 'showLoginForm'])->name('login');
-Route::post('/login', [AuthController::class, 'login']);
-Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
+Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
+Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth')->name('logout');
 
-// Attendance Management Routes (No Authentication Required)
-Route::prefix('attendance')->name('attendance.')->group(function () {
-    // Dashboard
+// Attendance dashboard (login required). The device's own endpoints are in routes/iclock.php.
+Route::middleware('auth')->prefix('attendance')->name('attendance.')->group(function () {
     Route::get('/', [AttendanceController::class, 'index'])->name('index');
-    
-    // Device Management
-    Route::get('/test-connection', [AttendanceController::class, 'testConnection'])->name('test-connection');
-    Route::get('/device-info', [AttendanceController::class, 'getDeviceInfo'])->name('device-info');
-    Route::get('/device-users', [AttendanceController::class, 'getDeviceUsers'])->name('device-users');
-    Route::post('/sync-device-users', [AttendanceController::class, 'syncDeviceUsers'])->name('sync-device-users');
-    
-    // Log Management
-    Route::post('/sync', [AttendanceController::class, 'syncLogs'])->name('sync');
+    Route::get('/latest', [AttendanceController::class, 'latest'])->name('latest');
     Route::get('/logs', [AttendanceController::class, 'getLogs'])->name('logs');
     Route::post('/mark-processed', [AttendanceController::class, 'markAsProcessed'])->name('mark-processed');
-    Route::delete('/clear-device-logs', [AttendanceController::class, 'clearDeviceLogs'])->name('clear-device-logs');
-    
-    // Real-time sync
-    Route::get('/realtime-sync', [AttendanceController::class, 'realtimeSync'])->name('realtime-sync');
-    
-    // User Summary
-    Route::get('/user/{userId}/summary', [AttendanceController::class, 'getUserSummary'])->name('user-summary');
-    
-    // Export
+    Route::get('/user/{user}/summary', [AttendanceController::class, 'getUserSummary'])->name('user-summary');
     Route::get('/export', [AttendanceController::class, 'exportLogs'])->name('export');
+});
+
+Route::middleware('auth')->prefix('employees')->name('employees.')->group(function () {
+    Route::get('/', [EmployeeController::class, 'index'])->name('index');
+    Route::post('/fetch-from-devices', [EmployeeController::class, 'fetchFromDevices'])->name('fetch');
+    Route::get('/{employee}', [EmployeeController::class, 'show'])->name('show');
+    Route::put('/{employee}', [EmployeeController::class, 'update'])->name('update');
 });

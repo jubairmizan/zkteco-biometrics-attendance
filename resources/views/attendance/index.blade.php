@@ -1,225 +1,209 @@
-<!DOCTYPE html>
-<html lang="en">
+@extends('layouts.app')
 
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="csrf-token" content="{{ csrf_token() }}">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
-</head>
+@section('title', 'Attendance')
 
-<body class="bg-gray-100">
-    <div x-data="attendanceApp()" class="min-h-screen">
-        <!-- Header -->
-        <header class="bg-white shadow-sm border-b">
-            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                <div class="flex justify-between items-center py-6">
-                    <div>
-                        <h1 class="text-3xl font-bold text-gray-900">ZKTeco Attendance</h1>
-                    </div>
-                    <div class="flex items-center space-x-4">
-                        <button @click="testConnection()"
-                            class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition duration-200">
-                            <i class="fas fa-wifi mr-2"></i>Test Connection
-                        </button>
-                        <button @click="syncLogs()"
-                            class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg transition duration-200">
-                            <i class="fas fa-sync mr-2"></i>Sync Logs
-                        </button>
-                    </div>
-                </div>
+@php
+    $typeColors = [
+        'check_in' => 'bg-green-100 text-green-800',
+        'check_out' => 'bg-red-100 text-red-800',
+        'break_out' => 'bg-yellow-100 text-yellow-800',
+        'break_in' => 'bg-blue-100 text-blue-800',
+        'overtime_in' => 'bg-purple-100 text-purple-800',
+        'overtime_out' => 'bg-pink-100 text-pink-800',
+    ];
+    $hasFilters = collect($filters)->filter(fn ($v) => $v !== null && $v !== '')->isNotEmpty();
+@endphp
+
+@section('content')
+<div x-data="attendanceApp({{ $latestId }})" class="space-y-6">
+
+            <!-- New punches banner -->
+            <div x-show="newCount > 0" x-cloak
+                class="bg-blue-50 border border-blue-200 text-blue-800 rounded-lg px-4 py-3 text-sm flex justify-between items-center">
+                <span><i class="fas fa-bell mr-2"></i><span x-text="newCount"></span> new punch(es) received.</span>
+                <button @click="window.location.reload()" class="font-semibold hover:underline">Show</button>
             </div>
-        </header>
 
-        <!-- Status Cards -->
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                <!-- Connection Status -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-2 rounded-md"
-                            :class="connectionStatus === 'connected' ? 'bg-green-100' : 'bg-red-100'">
-                            <i class="fas fa-wifi text-xl"
-                                :class="connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'"></i>
-                        </div>
-                        <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-600">Device Status</p>
-                            <p class="text-lg font-semibold"
-                                :class="connectionStatus === 'connected' ? 'text-green-600' : 'text-red-600'"
-                                x-text="connectionStatus"></p>
-                        </div>
+            <!-- Stats -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="bg-white rounded-lg shadow p-6 flex items-center">
+                    <div class="p-3 bg-yellow-100 rounded-md"><i class="fas fa-calendar-day text-xl text-yellow-600"></i></div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Punches today</p>
+                        <p class="text-2xl font-semibold text-gray-900" x-text="today">{{ $stats['today'] }}</p>
                     </div>
                 </div>
-
-                <!-- Total Logs -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-2 bg-blue-100 rounded-md">
-                            <i class="fas fa-list text-xl text-blue-600"></i>
-                        </div>
-                        <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-600">Total Logs</p>
-                            <p class="text-lg font-semibold text-gray-900" x-text="totalLogs">{{ $logs->total() }}</p>
-                        </div>
+                <div class="bg-white rounded-lg shadow p-6 flex items-center">
+                    <div class="p-3 bg-green-100 rounded-md"><i class="fas fa-users text-xl text-green-600"></i></div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Employees punched today</p>
+                        <p class="text-2xl font-semibold text-gray-900">{{ $stats['today_employees'] }}</p>
                     </div>
                 </div>
-
-                <!-- Today's Logs -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-2 bg-yellow-100 rounded-md">
-                            <i class="fas fa-calendar-day text-xl text-yellow-600"></i>
-                        </div>
-                        <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-600">Today's Logs</p>
-                            <p class="text-lg font-semibold text-gray-900" x-text="todayLogs">0</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Last Sync -->
-                <div class="bg-white rounded-lg shadow p-6">
-                    <div class="flex items-center">
-                        <div class="p-2 bg-purple-100 rounded-md">
-                            <i class="fas fa-clock text-xl text-purple-600"></i>
-                        </div>
-                        <div class="ml-4">
-                            <p class="text-sm font-medium text-gray-600">Last Sync</p>
-                            <p class="text-sm font-semibold text-gray-900" x-text="lastSync">Never</p>
-                        </div>
+                <div class="bg-white rounded-lg shadow p-6 flex items-center">
+                    <div class="p-3 bg-blue-100 rounded-md"><i class="fas fa-list text-xl text-blue-600"></i></div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">All punches</p>
+                        <p class="text-2xl font-semibold text-gray-900">{{ number_format($stats['total']) }}</p>
                     </div>
                 </div>
             </div>
 
-            <!-- Controls -->
-            <div class="bg-white rounded-lg shadow mb-8">
-                <div class="p-6 border-b border-gray-200">
-                    <h2 class="text-lg font-semibold text-gray-900">Device Controls</h2>
-                </div>
-                <div class="p-6">
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
-                        <button @click="getDeviceInfo()"
-                            class="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200">
-                            <i class="fas fa-info-circle mr-2 text-blue-600"></i>
-                            Device Info
-                        </button>
-                        <button @click="getDeviceUsers()"
-                            class="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200">
-                            <i class="fas fa-users mr-2 text-green-600"></i>
-                            Device Users
-                        </button>
-                        <button @click="syncDeviceUsers()"
-                            class="flex items-center justify-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition duration-200">
-                            <i class="fas fa-sync mr-2"></i>
-                            Sync Device Users
-                        </button>
-                        <button @click="exportLogs()"
-                            class="flex items-center justify-center px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50 transition duration-200">
-                            <i class="fas fa-download mr-2 text-purple-600"></i>
-                            Export CSV
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Attendance Logs Table -->
+            <!-- Devices -->
             <div class="bg-white rounded-lg shadow">
-                <div class="p-6 border-b border-gray-200">
-                    <div class="flex justify-between items-center">
-                        <h2 class="text-lg font-semibold text-gray-900">Recent Attendance Logs</h2>
-                        <div class="flex items-center space-x-2">
-                            <label class="flex items-center">
-                                <input type="checkbox" x-model="autoSync"
-                                    class="rounded border-gray-300 text-blue-600 shadow-sm focus:border-blue-300 focus:ring focus:ring-blue-200 focus:ring-opacity-50">
-                                <span class="ml-2 text-sm text-gray-600">Auto Sync (5min)</span>
-                            </label>
-                        </div>
+                <div class="px-6 py-4 border-b border-gray-200">
+                    <h2 class="text-lg font-semibold text-gray-900">Devices</h2>
+                </div>
+                @if ($devices->isEmpty())
+                    <p class="px-6 py-4 text-sm text-gray-500">
+                        No device has connected yet. On the device, set Cloud Server Settings → Server Mode ADMS,
+                        and the server address and port of this app. It appears here on its first connection.
+                    </p>
+                @else
+                    <ul class="divide-y divide-gray-200">
+                        @foreach ($devices as $device)
+                            <li class="px-6 py-3 flex flex-wrap items-center justify-between gap-2 text-sm">
+                                <div class="flex items-center gap-3">
+                                    <span class="inline-block h-2.5 w-2.5 rounded-full"
+                                        :class="deviceOnline(@js($device->serial_number), {{ $device->isOnline() ? 'true' : 'false' }}) ? 'bg-green-500' : 'bg-gray-400'"></span>
+                                    <span class="font-medium text-gray-900">{{ $device->name ?: $device->serial_number }}</span>
+                                    @if ($device->name)
+                                        <span class="text-gray-500">{{ $device->serial_number }}</span>
+                                    @endif
+                                    <span class="text-gray-500">{{ $device->ip_address }}</span>
+                                </div>
+                                <div class="text-gray-500">
+                                    Last contact:
+                                    <span x-text="deviceLastSeen(@js($device->serial_number), @js($device->last_seen_at?->diffForHumans() ?? 'never'))"></span>
+                                    · Last punch: {{ $device->last_punch_at?->diffForHumans() ?? 'none yet' }}
+                                </div>
+                            </li>
+                        @endforeach
+                    </ul>
+                @endif
+            </div>
+
+            <!-- Filters -->
+            <form method="GET" action="{{ route('attendance.index') }}" class="bg-white rounded-lg shadow p-6">
+                <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="start_date">From</label>
+                        <input type="date" id="start_date" name="start_date" value="{{ $filters['start_date'] ?? '' }}"
+                            class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
                     </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="end_date">To</label>
+                        <input type="date" id="end_date" name="end_date" value="{{ $filters['end_date'] ?? '' }}"
+                            class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="search">PIN or name</label>
+                        <input type="text" id="search" name="search" value="{{ $filters['search'] ?? '' }}" placeholder="e.g. 1001"
+                            class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="punch_type">Type</label>
+                        <select id="punch_type" name="punch_type" class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
+                            <option value="">All</option>
+                            @foreach ($punchTypes as $value => $label)
+                                <option value="{{ $value }}" @selected(($filters['punch_type'] ?? '') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="device_sn">Device</label>
+                        <select id="device_sn" name="device_sn" class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
+                            <option value="">All</option>
+                            @foreach ($devices as $device)
+                                <option value="{{ $device->serial_number }}" @selected(($filters['device_sn'] ?? '') === $device->serial_number)>
+                                    {{ $device->name ?: $device->serial_number }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="flex-1 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-md text-sm">
+                            <i class="fas fa-filter mr-1"></i>Filter
+                        </button>
+                        @if ($hasFilters)
+                            <a href="{{ route('attendance.index') }}" class="px-3 py-2 border border-gray-300 rounded-md text-sm text-gray-600 hover:bg-gray-50" title="Clear filters">
+                                <i class="fas fa-times"></i>
+                            </a>
+                        @endif
+                    </div>
+                </div>
+            </form>
+
+            <!-- Attendance list -->
+            <div class="bg-white rounded-lg shadow">
+                <div class="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+                    <h2 class="text-lg font-semibold text-gray-900">
+                        Attendance
+                        <span class="text-sm font-normal text-gray-500">({{ number_format($logs->total()) }} {{ $hasFilters ? 'matching' : 'total' }})</span>
+                    </h2>
+                    <a href="{{ route('attendance.export', request()->query()) }}"
+                        class="text-sm px-3 py-2 border border-gray-300 rounded-md hover:bg-gray-50">
+                        <i class="fas fa-download mr-1 text-purple-600"></i>Export CSV
+                    </a>
                 </div>
                 <div class="overflow-x-auto">
                     <table class="min-w-full divide-y divide-gray-200">
                         <thead class="bg-gray-50">
                             <tr>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    User</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Device ID</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Punch Time</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Type</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Verification</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Device IP</th>
-                                <th
-                                    class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                                    Status</th>
+                                @foreach (['Employee', 'PIN', 'Punch time', 'Type', 'Verification', 'Device'] as $heading)
+                                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">{{ $heading }}</th>
+                                @endforeach
                             </tr>
                         </thead>
                         <tbody class="bg-white divide-y divide-gray-200">
                             @forelse($logs as $log)
                                 <tr class="hover:bg-gray-50">
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <div class="flex items-center">
-                                            <div class="flex-shrink-0 h-10 w-10">
-                                                <div
-                                                    class="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                                                    <i class="fas fa-user text-gray-600"></i>
-                                                </div>
+                                    <td class="px-6 py-3 whitespace-nowrap text-sm">
+                                        @php($personUrl = $log->employee ? route('employees.show', $log->employee) : null)
+                                        <div class="flex items-center gap-3">
+                                            <div class="h-9 w-9 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                                                {{ $log->employee?->initials ?? '#' }}
                                             </div>
-                                            <div class="ml-4">
-                                                <div class="text-sm font-medium text-gray-900">
-                                                    {{ $log->user ? $log->user->name : 'Unknown User' }}
-                                                </div>
-                                                <div class="text-sm text-gray-500">
-                                                    {{ $log->user ? $log->user->email : 'No email' }}
-                                                </div>
+                                            <div>
+                                                @if ($log->person_name)
+                                                    @if ($personUrl)
+                                                        <a href="{{ $personUrl }}" class="font-medium text-gray-900 hover:text-blue-700">{{ $log->person_name }}</a>
+                                                    @else
+                                                        <span class="font-medium text-gray-900">{{ $log->person_name }}</span>
+                                                    @endif
+                                                @elseif ($personUrl)
+                                                    <a href="{{ $personUrl }}" class="text-gray-400 hover:text-blue-700" title="Add a name for this PIN">No name yet</a>
+                                                @else
+                                                    <span class="text-gray-400">No name yet</span>
+                                                @endif
+                                                @if ($log->employee?->department || $log->employee?->designation)
+                                                    <div class="text-xs text-gray-500">
+                                                        {{ collect([$log->employee->designation, $log->employee->department])->filter()->implode(' · ') }}
+                                                    </div>
+                                                @endif
                                             </div>
                                         </div>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $log->device_user_id }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $log->punch_time->format('M d, Y H:i:s') }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span
-                                            class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
-                                        @if ($log->punch_type === 'check_in') bg-green-100 text-green-800
-                                        @elseif($log->punch_type === 'check_out') bg-red-100 text-red-800
-                                        @elseif($log->punch_type === 'break_in') bg-blue-100 text-blue-800
-                                        @else bg-yellow-100 text-yellow-800 @endif">
-                                            {{ ucfirst(str_replace('_', ' ', $log->punch_type)) }}
+                                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{{ $log->device_user_id }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">{{ $log->punch_time->format('M d, Y H:i:s') }}</td>
+                                    <td class="px-6 py-3 whitespace-nowrap">
+                                        <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $typeColors[$log->punch_type] ?? 'bg-gray-100 text-gray-800' }}">
+                                            {{ $log->punch_type_label }}
                                         </span>
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ ucfirst($log->verification_type ?? 'Unknown') }}
+                                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">
+                                        {{ ucfirst(str_replace('_', ' ', $log->verification_type ?? 'unknown')) }}
                                     </td>
-                                    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                                        {{ $log->device_ip }}
-                                    </td>
-                                    <td class="px-6 py-4 whitespace-nowrap">
-                                        <span
-                                            class="inline-flex px-2 py-1 text-xs font-semibold rounded-full
-                                        {{ $log->is_processed ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800' }}">
-                                            {{ $log->is_processed ? 'Processed' : 'Pending' }}
-                                        </span>
-                                    </td>
+                                    <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-500">{{ $log->device_sn ?? $log->device_ip }}</td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="px-6 py-4 text-center text-gray-500">
-                                        No attendance logs found. Try syncing with the device.
+                                    <td colspan="6" class="px-6 py-8 text-center text-gray-500">
+                                        @if ($hasFilters)
+                                            No punches match these filters.
+                                        @else
+                                            No punches yet. They appear here as soon as the device sends them.
+                                        @endif
                                     </td>
                                 </tr>
                             @endforelse
@@ -232,330 +216,53 @@
                     </div>
                 @endif
             </div>
-        </div>
+</div>
+@endsection
 
-        <!-- Notification Toast -->
-        <div x-show="notification.show" x-transition:enter="transition ease-out duration-300"
-            x-transition:enter-start="opacity-0 transform translate-y-2"
-            x-transition:enter-end="opacity-100 transform translate-y-0"
-            x-transition:leave="transition ease-in duration-200"
-            x-transition:leave-start="opacity-100 transform translate-y-0"
-            x-transition:leave-end="opacity-0 transform translate-y-2" class="fixed top-4 right-4 z-50">
-            <div class="bg-white rounded-lg shadow-lg border p-4 max-w-sm"
-                :class="notification.type === 'success' ? 'border-green-200' : 'border-red-200'">
-                <div class="flex items-center">
-                    <div class="flex-shrink-0">
-                        <i
-                            :class="notification.type === 'success' ? 'fas fa-check-circle text-green-600' :
-                                'fas fa-exclamation-circle text-red-600'"></i>
-                    </div>
-                    <div class="ml-3">
-                        <p class="text-sm font-medium text-gray-900" x-text="notification.title"></p>
-                        <p class="text-sm text-gray-600" x-text="notification.message"></p>
-                    </div>
-                    <div class="ml-auto pl-3">
-                        <button @click="notification.show = false" class="text-gray-400 hover:text-gray-600">
-                            <i class="fas fa-times"></i>
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
+@push('scripts')
     <script>
-        function attendanceApp() {
+        function attendanceApp(latestId) {
             return {
-                connectionStatus: 'unknown',
-                totalLogs: {{ $logs->total() }},
-                todayLogs: 0,
-                lastSync: 'Never',
-                autoSync: false,
-                syncInterval: null,
-                notification: {
-                    show: false,
-                    type: 'success',
-                    title: '',
-                    message: ''
-                },
+                latestId,
+                newCount: 0,
+                today: {{ $stats['today'] }},
+                devices: {},
 
                 init() {
-                    this.testConnection();
-                    this.getTodayLogs();
-
-                    // Watch autoSync toggle
-                    this.$watch('autoSync', (value) => {
-                        if (value) {
-                            this.startAutoSync();
-                        } else {
-                            this.stopAutoSync();
-                        }
-                    });
+                    setInterval(() => this.poll(), 15000);
                 },
 
-                showNotification(type, title, message) {
-                    this.notification = {
-                        show: true,
-                        type,
-                        title,
-                        message
-                    };
-                    setTimeout(() => {
-                        this.notification.show = false;
-                    }, 5000);
-                },
-
-                async testConnection() {
+                async poll() {
                     try {
-                        const response = await fetch('/attendance/test-connection');
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.connectionStatus = 'disconnected';
-                            this.showNotification('error', 'Authentication Error',
-                                'Please log in to access device controls');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-
-                        this.connectionStatus = data.status === 'success' ? 'connected' : 'disconnected';
-
-                        this.showNotification(
-                            data.status === 'success' ? 'success' : 'error',
-                            'Connection Test',
-                            data.message
-                        );
-                    } catch (error) {
-                        this.connectionStatus = 'disconnected';
-                        this.showNotification('error', 'Connection Error', 'Failed to test connection: ' + error
-                            .message);
-                    }
-                },
-
-                async syncLogs() {
-                    try {
-                        const response = await fetch('/attendance/sync', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                    'content')
-                            }
+                        const response = await fetch(@js(route('attendance.latest')), {
+                            headers: { 'Accept': 'application/json' },
                         });
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.showNotification('error', 'Authentication Error', 'Please log in to sync logs');
+                        if (response.status === 401) {
+                            window.location.reload(); // session expired: go to login
                             return;
                         }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
+                        if (!response.ok) return;
 
                         const data = await response.json();
+                        this.today = data.today;
+                        this.devices = Object.fromEntries(data.devices.map(d => [d.serial_number, d]));
 
-                        this.showNotification('success', 'Sync Complete', data.message);
-                        this.lastSync = new Date().toLocaleString();
-
-                        // Refresh page to show new logs
-                        setTimeout(() => {
-                            window.location.reload();
-                        }, 2000);
-                    } catch (error) {
-                        this.showNotification('error', 'Sync Error', 'Failed to sync logs: ' + error.message);
+                        if (data.latest_id > this.latestId) {
+                            this.newCount = data.latest_id - this.latestId;
+                        }
+                    } catch (e) {
+                        // Network blip: try again on the next tick
                     }
                 },
 
-                async getDeviceInfo() {
-                    try {
-                        const response = await fetch('/attendance/device-info');
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.showNotification('error', 'Authentication Error',
-                                'Please log in to access device information');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-
-                        let message = `Device: ${data.device_name || 'Unknown'}\n`;
-                        message += `Firmware: ${data.firmware_version || 'Unknown'}\n`;
-                        message += `Users: ${data.user_count || 0}\n`;
-                        message += `Logs: ${data.attendance_count || 0}`;
-
-                        alert(message);
-                    } catch (error) {
-                        this.showNotification('error', 'Device Info Error', 'Failed to get device information: ' + error
-                            .message);
-                    }
+                deviceOnline(sn, initial) {
+                    return this.devices[sn] ? this.devices[sn].online : initial;
                 },
 
-                async getDeviceUsers() {
-                    try {
-                        const response = await fetch('/attendance/device-users');
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.showNotification('error', 'Authentication Error',
-                                'Please log in to access device users');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-
-                        this.showNotification('success', 'Device Users', `Found ${data.length} users on device`);
-                    } catch (error) {
-                        this.showNotification('error', 'Device Users Error', 'Failed to get device users: ' + error
-                            .message);
-                    }
+                deviceLastSeen(sn, initial) {
+                    return this.devices[sn]?.last_seen ?? initial;
                 },
-
-                async syncDeviceUsers() {
-                    try {
-                        const response = await fetch('/attendance/sync-device-users', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').getAttribute(
-                                    'content')
-                            }
-                        });
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.showNotification('error', 'Authentication Error',
-                                'Please log in to sync device users');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const result = await response.json();
-
-                        if (result.success) {
-                            const {
-                                synced_count,
-                                updated_count,
-                                total_device_users,
-                                errors
-                            } = result.data;
-                            let message =
-                                `Synchronized ${synced_count} new users and updated ${updated_count} existing users from ${total_device_users} device users.`;
-
-                            if (errors.length > 0) {
-                                message += ` ${errors.length} errors occurred.`;
-                                console.warn('Sync errors:', errors);
-                            }
-
-                            this.showNotification('success', 'Device Users Synced', message);
-
-                            // Refresh the logs to show any new users
-                            this.loadLogs();
-                        } else {
-                            this.showNotification('error', 'Sync Failed', result.message ||
-                                'Failed to sync device users');
-                        }
-                    } catch (error) {
-                        this.showNotification('error', 'Sync Error', 'Failed to sync device users: ' + error.message);
-                    }
-                },
-
-                exportLogs() {
-                    window.open('/attendance/export', '_blank');
-                },
-
-                async getTodayLogs() {
-                    try {
-                        const today = new Date().toISOString().split('T')[0];
-                        const response = await fetch(`/attendance/logs?start_date=${today}&end_date=${today}`);
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            console.log('Authentication required for today logs');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-
-                        this.todayLogs = data.total || 0;
-                    } catch (error) {
-                        console.error('Error fetching today logs:', error);
-                    }
-                },
-
-                startAutoSync() {
-                    this.syncInterval = setInterval(() => {
-                        this.realtimeSync();
-                    }, 5 * 60 * 1000); // 5 minutes
-
-                    this.showNotification('success', 'Auto Sync', 'Auto sync enabled (every 5 minutes)');
-                },
-
-                stopAutoSync() {
-                    if (this.syncInterval) {
-                        clearInterval(this.syncInterval);
-                        this.syncInterval = null;
-                    }
-
-                    this.showNotification('success', 'Auto Sync', 'Auto sync disabled');
-                },
-
-                async realtimeSync() {
-                    try {
-                        const response = await fetch('/attendance/realtime-sync');
-
-                        // Check if response is a redirect to login
-                        if (response.redirected && response.url.includes('/login')) {
-                            this.showNotification('error', 'Authentication Error',
-                                'Please log in to access realtime sync');
-                            return;
-                        }
-
-                        if (!response.ok) {
-                            throw new Error(`HTTP error! status: ${response.status}`);
-                        }
-
-                        const data = await response.json();
-
-                        if (data.new_logs > 0) {
-                            this.showNotification('success', 'New Logs', `Synced ${data.new_logs} new attendance logs`);
-                            this.lastSync = new Date().toLocaleString();
-
-                            // Refresh page to show new logs
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 2000);
-                        }
-                    } catch (error) {
-                        console.error('Realtime sync error:', error);
-                        this.showNotification('error', 'Realtime Sync Error', 'Failed to perform realtime sync: ' +
-                            error.message);
-                    }
-                }
             }
         }
     </script>
-</body>
-
-</html>
+@endpush
