@@ -51,6 +51,18 @@ return [
     |
     */
 
+    /*
+    |--------------------------------------------------------------------------
+    | Incoming HTTP Request Log
+    |--------------------------------------------------------------------------
+    |
+    | When true, App\Http\Middleware\LogIncomingRequests writes every request
+    | to the "requests" channel (storage/logs/requests-YYYY-MM-DD.log).
+    |
+    */
+
+    'log_http_requests' => env('LOG_HTTP_REQUESTS', true),
+
     'channels' => [
         'stack' => [
             'driver' => 'stack',
@@ -62,6 +74,14 @@ return [
             'driver' => 'single',
             'path' => storage_path('logs/laravel.log'),
             'level' => env('LOG_LEVEL', 'debug'),
+            'replace_placeholders' => true,
+        ],
+
+        'requests' => [
+            'driver' => 'daily',
+            'path' => storage_path('logs/requests.log'),
+            'level' => 'info',
+            'days' => 14,
             'replace_placeholders' => true,
         ],
 

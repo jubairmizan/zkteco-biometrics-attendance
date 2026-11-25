@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "000d11bcae1d9efbf8099c9345ea9294",
+    "content-hash": "6e52e829e2e5a0bc93297ab94e82e7be",
     "packages": [
         {
             "name": "brick/math",
@@ -1991,6 +1991,73 @@
                 }
             ],
             "time": "2025-03-24T10:02:05+00:00"
+        },
+        {
+            "name": "msahidurr/laravel-error-notifier",
+            "version": "v1.0.1",
+            "source": {
+                "type": "git",
+                "url": "https://github.com/msahidurr/laravel-error-notifier.git",
+                "reference": "aa7388be9e607b20b362e8e6280b9a92c72d7666"
+            },
+            "dist": {
+                "type": "zip",
+                "url": "https://api.github.com/repos/msahidurr/laravel-error-notifier/zipball/aa7388be9e607b20b362e8e6280b9a92c72d7666",
+                "reference": "aa7388be9e607b20b362e8e6280b9a92c72d7666",
+                "shasum": ""
+            },
+            "require": {
+                "guzzlehttp/guzzle": "^7.2",
+                "illuminate/console": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/contracts": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/http": "^9.0|^10.0|^11.0|^12.0",
+                "illuminate/support": "^9.0|^10.0|^11.0|^12.0",
+                "php": "^8.1"
+            },
+            "require-dev": {
+                "orchestra/testbench": "^7.0|^8.0|^9.0|^10.0",
+                "phpunit/phpunit": "^9.5|^10.0|^11.0"
+            },
+            "type": "library",
+            "extra": {
+                "laravel": {
+                    "aliases": {
+                        "ErrorNotifier": "Msahidurr\\ErrorNotifier\\Facades\\ErrorNotifier"
+                    },
+                    "providers": [
+                        "Msahidurr\\ErrorNotifier\\ErrorNotifierServiceProvider"
+                    ]
+                }
+            },
+            "autoload": {
+                "psr-4": {
+                    "Msahidurr\\ErrorNotifier\\": "src/"
+                }
+            },
+            "notification-url": "https://packagist.org/downloads/",
+            "license": [
+                "MIT"
+            ],
+            "authors": [
+                {
+                    "name": "msahidurr"
+                }
+            ],
+            "description": "Send Laravel exception reports to Telegram and other channels.",
+            "keywords": [
+                "error-reporting",
+                "exceptions",
+                "laravel",
+                "monitoring",
+                "notifications",
+                "telegram"
+            ],
+            "support": {
+                "issues": "https://github.com/msahidurr/laravel-error-notifier/issues",
+                "source": "https://github.com/msahidurr/laravel-error-notifier/tree/v1.0.1"
+            },
+            "time": "2026-10-10T07:30:29+00:00",
+            "published-time": "2026-10-27T07:15:08+00:00"
         },
         {
             "name": "nesbot/carbon",
@@ -8208,12 +8275,12 @@
     ],
     "aliases": [],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {},
     "prefer-stable": true,
     "prefer-lowest": false,
     "platform": {
         "php": "^8.1"
     },
-    "platform-dev": [],
-    "plugin-api-version": "2.3.0"
+    "platform-dev": {},
+    "plugin-api-version": "2.11.0"
 }
