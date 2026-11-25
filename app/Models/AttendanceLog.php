@@ -22,6 +22,11 @@ class AttendanceLog extends Model
         'overtime_out' => 'OT-Out',
     ];
 
+    public const ATTENDANCE_STATUSES = [
+        'late'        => 'Late',
+        'early_leave' => 'Early leave',
+    ];
+
     protected $fillable = [
         'user_id',
         'device_user_id',
@@ -29,6 +34,8 @@ class AttendanceLog extends Model
         'device_sn',
         'punch_time',
         'punch_type',
+        'device_status',
+        'attendance_status',
         'verification_type',
         'work_code',
         'is_processed',
@@ -37,6 +44,7 @@ class AttendanceLog extends Model
     protected $casts = [
         'punch_time' => 'datetime',
         'is_processed' => 'boolean',
+        'device_status' => 'integer',
     ];
 
     /**
@@ -68,6 +76,11 @@ class AttendanceLog extends Model
         return $this->belongsTo(Device::class, 'device_sn', 'serial_number');
     }
 
+    public function getAttendanceStatusLabelAttribute(): ?string
+    {
+        return $this->attendance_status ? (self::ATTENDANCE_STATUSES[$this->attendance_status] ?? $this->attendance_status) : null;
+    }
+
     public function getPunchTypeLabelAttribute(): string
     {
         return self::PUNCH_TYPES[$this->punch_type] ?? ucfirst(str_replace('_', ' ', (string) $this->punch_type));
@@ -92,7 +105,7 @@ class AttendanceLog extends Model
     /**
      * Apply the dashboard / export / JSON filters. Empty values are ignored.
      *
-     * @param  array{start_date?: ?string, end_date?: ?string, search?: ?string, punch_type?: ?string, device_sn?: ?string, device_ip?: ?string, user_id?: mixed}  $filters
+     * @param  array{start_date?: ?string, end_date?: ?string, search?: ?string, punch_type?: ?string, attendance_status?: ?string, device_sn?: ?string, device_ip?: ?string, user_id?: mixed}  $filters
      */
     public function scopeFilter(Builder $query, array $filters): Builder
     {
@@ -117,7 +130,7 @@ class AttendanceLog extends Model
             });
         }
 
-        foreach (['punch_type', 'device_sn', 'device_ip', 'user_id'] as $column) {
+        foreach (['punch_type', 'attendance_status', 'device_sn', 'device_ip', 'user_id'] as $column) {
             if (isset($filters[$column])) {
                 $query->where($column, $filters[$column]);
             }

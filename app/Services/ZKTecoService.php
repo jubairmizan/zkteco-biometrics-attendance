@@ -164,7 +164,9 @@ class ZKTecoService
                         'device_user_id' => $log['id'],
                         'device_ip' => $this->deviceIp,
                         'punch_time' => Carbon::parse($log['timestamp']),
-                        'punch_type' => $this->determinePunchType($log),
+                        // Same time-of-day rules as ADMS pushes (App\Services\PunchClassifier)
+                        ...app(PunchClassifier::class)->classify(Carbon::parse($log['timestamp']), (int) ($log['status'] ?? 0)),
+                        'device_status' => (int) ($log['status'] ?? 0),
                         'verification_type' => $this->getVerificationType($log['type'] ?? null),
                         'work_code' => $log['status'] ?? null,
                         'is_processed' => false,

@@ -66,6 +66,8 @@ class EmployeeController extends Controller
                 'days_present' => $days->count(),
                 'punches'      => $monthLogs->count(),
                 'minutes'      => $days->sum('minutes'),
+                'late_days'    => $days->where('late', true)->count(),
+                'early_days'   => $days->where('early', true)->count(),
             ],
             'recent'      => $employee->attendanceLogs()->orderByDesc('punch_time')->paginate(15, ['*'], 'page')->withQueryString(),
             'lastPunch'   => $employee->attendanceLogs()->max('punch_time'),
@@ -123,6 +125,9 @@ class EmployeeController extends Controller
                 $minutes = $dayLogs->count() > 1 ? (int) $first->diffInMinutes($last) : 0;
 
                 return [
+                    // Late if the day's first punch was a late check-in; early if the last one was an early check-out
+                    'late'    => $dayLogs->first()->attendance_status === 'late',
+                    'early'   => $dayLogs->count() > 1 && $dayLogs->last()->attendance_status === 'early_leave',
                     'date'    => Carbon::parse($date),
                     'first'   => $first,
                     'last'    => $dayLogs->count() > 1 ? $last : null,

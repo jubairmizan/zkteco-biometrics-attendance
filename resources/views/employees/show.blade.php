@@ -51,10 +51,12 @@
                     <a href="{{ route('employees.show', [$employee, 'month' => $month->copy()->addMonth()->format('Y-m')]) }}" class="px-2 py-1 border rounded hover:bg-gray-50" title="Next month"><i class="fas fa-chevron-right"></i></a>
                 </div>
             </div>
-            <div class="px-6 py-4 grid grid-cols-3 gap-4 border-b border-gray-200 text-center">
+            <div class="px-6 py-4 grid grid-cols-2 md:grid-cols-5 gap-4 border-b border-gray-200 text-center">
                 <div><div class="text-2xl font-semibold text-gray-900">{{ $monthTotals['days_present'] }}</div><div class="text-xs text-gray-500">days present</div></div>
                 <div><div class="text-2xl font-semibold text-gray-900">{{ $hours($monthTotals['minutes']) }}</div><div class="text-xs text-gray-500">first-to-last punch, total</div></div>
                 <div><div class="text-2xl font-semibold text-gray-900">{{ $monthTotals['punches'] }}</div><div class="text-xs text-gray-500">punches</div></div>
+                <div><div class="text-2xl font-semibold {{ $monthTotals['late_days'] ? 'text-orange-600' : 'text-gray-900' }}">{{ $monthTotals['late_days'] }}</div><div class="text-xs text-gray-500">late (after {{ config('zkteco.time_rules.late_after') }})</div></div>
+                <div><div class="text-2xl font-semibold {{ $monthTotals['early_days'] ? 'text-amber-600' : 'text-gray-900' }}">{{ $monthTotals['early_days'] }}</div><div class="text-xs text-gray-500">left before {{ config('zkteco.time_rules.check_out_from') }}</div></div>
             </div>
             <div class="overflow-x-auto">
                 <table class="min-w-full divide-y divide-gray-200">
@@ -69,8 +71,14 @@
                         @forelse ($days as $day)
                             <tr class="hover:bg-gray-50 align-top">
                                 <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ $day['date']->format('D, M d') }}</td>
-                                <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ $day['first']->format('H:i') }}</td>
-                                <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ $day['last']?->format('H:i') ?? '—' }}</td>
+                                <td class="px-6 py-3 whitespace-nowrap text-gray-900">
+                                    {{ $day['first']->format('H:i') }}
+                                    @if ($day['late'])<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-orange-100 text-orange-800">Late</span>@endif
+                                </td>
+                                <td class="px-6 py-3 whitespace-nowrap text-gray-900">
+                                    {{ $day['last']?->format('H:i') ?? '—' }}
+                                    @if ($day['early'])<span class="ml-1 px-1.5 py-0.5 text-xs rounded bg-amber-100 text-amber-800">Early</span>@endif
+                                </td>
                                 <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ $hours($day['minutes']) }}</td>
                                 <td class="px-6 py-3">
                                     <div class="flex flex-wrap gap-1">
@@ -146,6 +154,9 @@
                         <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ $log->punch_time->format('M d, Y H:i:s') }}</td>
                         <td class="px-6 py-3 whitespace-nowrap">
                             <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $typeColors[$log->punch_type] ?? 'bg-gray-100 text-gray-800' }}">{{ $log->punch_type_label }}</span>
+                            @if ($log->attendance_status)
+                                <span class="inline-flex ml-1 px-2 py-1 text-xs font-semibold rounded-full {{ $log->attendance_status === 'late' ? 'bg-orange-100 text-orange-800' : 'bg-amber-100 text-amber-800' }}">{{ $log->attendance_status_label }}</span>
+                            @endif
                         </td>
                         <td class="px-6 py-3 whitespace-nowrap text-gray-900">{{ ucfirst(str_replace('_', ' ', $log->verification_type ?? 'unknown')) }}</td>
                         <td class="px-6 py-3 whitespace-nowrap text-gray-500">{{ $log->device_sn ?? $log->device_ip }}</td>

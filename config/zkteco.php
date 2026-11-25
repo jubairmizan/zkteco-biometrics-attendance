@@ -64,6 +64,17 @@ return [
         'email_domain' => env('ZKTECO_USER_EMAIL_DOMAIN', 'device.local'),
     ],
 
+    // Time-of-day rules (App\Services\PunchClassifier). Times are in the device's local time.
+    //   up to and including check_in_until -> Check-In, marked late after late_after
+    //   after check_in_until               -> Check-Out, marked early leave before check_out_from
+    // Break / overtime keys pressed on the device are kept as sent.
+    'time_rules' => [
+        'enabled' => env('ATTENDANCE_TIME_RULES', true),
+        'late_after' => env('ATTENDANCE_LATE_AFTER', '09:30'),
+        'check_in_until' => env('ATTENDANCE_CHECK_IN_UNTIL', '12:00'),
+        'check_out_from' => env('ATTENDANCE_CHECK_OUT_FROM', '18:00'),
+    ],
+
     // Punch type mapping
     'punch_types' => [
         0 => 'check_in',

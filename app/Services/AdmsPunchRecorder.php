@@ -17,6 +17,10 @@ use Throwable;
  */
 class AdmsPunchRecorder
 {
+    public function __construct(private PunchClassifier $classifier)
+    {
+    }
+
     /** @var array<string, ?int> PIN => users.id, for this upload only */
     private array $userIds = [];
 
@@ -30,7 +34,6 @@ class AdmsPunchRecorder
     public function record(Device $device, ?string $ip, string $body): array
     {
         $result = ['accepted' => 0, 'stored' => [], 'duplicates' => 0, 'malformed' => 0, 'failed' => 0];
-        $punchTypes = config('zkteco.punch_types');
         $verifyTypes = config('zkteco.verification_types');
 
         foreach (preg_split('/\r\n|\r|\n/', trim($body)) as $line) {
@@ -74,7 +77,8 @@ class AdmsPunchRecorder
                 $log = AttendanceLog::create($attributes + [
                     'user_id'           => $this->userIdForPin($punch['pin']),
                     'device_ip'         => $ip ?? $device->ip_address ?? 'unknown',
-                    'punch_type'        => $punchTypes[(int) $punch['status']] ?? 'check_in',
+                    ...$this->classifier->classify($punch['time'], (int) $punch['status']),
+                    'device_status'     => is_numeric($punch['status']) ? (int) $punch['status'] : null,
                     'verification_type' => $verifyTypes[(int) $punch['verify']] ?? "mode_{$punch['verify']}",
                     'work_code'         => is_numeric($punch['work_code']) ? (int) $punch['work_code'] : null,
                     'is_processed'      => false,

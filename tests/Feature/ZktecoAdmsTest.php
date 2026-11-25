@@ -159,7 +159,7 @@ class ZktecoAdmsTest extends TestCase
 
     public function test_unknown_verify_mode_is_kept_as_a_code(): void
     {
-        $this->postAttlog("7\t2026-11-25 12:00:00\t0\t0")->assertSeeText('OK: 1');
+        $this->postAttlog("7\t2026-11-25 09:00:00\t0\t0")->assertSeeText('OK: 1');
 
         $this->assertSame('mode_0', AttendanceLog::first()->verification_type);
         Http::assertSent(fn (HttpRequest $r) => str_contains($r['text'], 'Check-In | Mode 0'));

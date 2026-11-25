@@ -33,6 +33,7 @@ class AttendanceController extends Controller
             'total'           => AttendanceLog::count(),
             'today'           => (clone $today)->count(),
             'today_employees' => (clone $today)->distinct()->count('device_user_id'),
+            'today_late'      => (clone $today)->where('attendance_status', 'late')->distinct()->count('device_user_id'),
         ];
 
         return view('attendance.index', [
@@ -41,6 +42,7 @@ class AttendanceController extends Controller
             'stats'      => $stats,
             'devices'    => Device::orderByDesc('last_seen_at')->get(),
             'punchTypes' => AttendanceLog::PUNCH_TYPES,
+            'statuses'   => AttendanceLog::ATTENDANCE_STATUSES,
             'latestId'   => (int) AttendanceLog::max('id'),
         ]);
     }
@@ -144,7 +146,7 @@ class AttendanceController extends Controller
             $file = fopen('php://output', 'w');
 
             fputcsv($file, [
-                'ID', 'Employee', 'Department', 'PIN', 'Punch Time', 'Punch Type', 'Verification', 'Device SN', 'Device IP', 'Processed',
+                'ID', 'Employee', 'Department', 'PIN', 'Punch Time', 'Punch Type', 'Status', 'Verification', 'Device SN', 'Device IP', 'Processed',
             ]);
 
             // Chunked so a large export doesn't load every row into memory
@@ -157,6 +159,7 @@ class AttendanceController extends Controller
                         $this->csvSafe($log->device_user_id),
                         $log->punch_time->format('Y-m-d H:i:s'),
                         $log->punch_type_label,
+                        $log->attendance_status_label ?? 'On time',
                         $log->verification_type,
                         $this->csvSafe((string) $log->device_sn),
                         $log->device_ip,
@@ -179,6 +182,7 @@ class AttendanceController extends Controller
             'end_date'   => ['nullable', 'date'],
             'search'     => ['nullable', 'string', 'max:100'],
             'punch_type' => ['nullable', Rule::in(array_keys(AttendanceLog::PUNCH_TYPES))],
+            'attendance_status' => ['nullable', Rule::in(array_keys(AttendanceLog::ATTENDANCE_STATUSES))],
             'device_sn'  => ['nullable', 'string', 'max:191'],
             'device_ip'  => ['nullable', 'string', 'max:45'],
             'user_id'    => ['nullable', 'integer'],

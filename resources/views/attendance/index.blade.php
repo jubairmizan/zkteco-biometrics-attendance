@@ -11,6 +11,7 @@
         'overtime_in' => 'bg-purple-100 text-purple-800',
         'overtime_out' => 'bg-pink-100 text-pink-800',
     ];
+    $statusColors = ['late' => 'bg-orange-100 text-orange-800', 'early_leave' => 'bg-amber-100 text-amber-800'];
     $hasFilters = collect($filters)->filter(fn ($v) => $v !== null && $v !== '')->isNotEmpty();
 @endphp
 
@@ -25,7 +26,7 @@
             </div>
 
             <!-- Stats -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6">
                 <div class="bg-white rounded-lg shadow p-6 flex items-center">
                     <div class="p-3 bg-yellow-100 rounded-md"><i class="fas fa-calendar-day text-xl text-yellow-600"></i></div>
                     <div class="ml-4">
@@ -40,6 +41,15 @@
                         <p class="text-2xl font-semibold text-gray-900">{{ $stats['today_employees'] }}</p>
                     </div>
                 </div>
+                <a href="{{ route('attendance.index', ['attendance_status' => 'late', 'start_date' => now()->toDateString(), 'end_date' => now()->toDateString()]) }}"
+                    class="bg-white rounded-lg shadow p-6 flex items-center hover:ring-2 hover:ring-orange-200">
+                    <div class="p-3 bg-orange-100 rounded-md"><i class="fas fa-user-clock text-xl text-orange-600"></i></div>
+                    <div class="ml-4">
+                        <p class="text-sm font-medium text-gray-600">Late today</p>
+                        <p class="text-2xl font-semibold text-gray-900">{{ $stats['today_late'] }}</p>
+                        <p class="text-xs text-gray-500">checked in after {{ config('zkteco.time_rules.late_after') }}</p>
+                    </div>
+                </a>
                 <div class="bg-white rounded-lg shadow p-6 flex items-center">
                     <div class="p-3 bg-blue-100 rounded-md"><i class="fas fa-list text-xl text-blue-600"></i></div>
                     <div class="ml-4">
@@ -85,7 +95,7 @@
 
             <!-- Filters -->
             <form method="GET" action="{{ route('attendance.index') }}" class="bg-white rounded-lg shadow p-6">
-                <div class="grid grid-cols-1 md:grid-cols-6 gap-4 items-end">
+                <div class="grid grid-cols-1 md:grid-cols-7 gap-4 items-end">
                     <div>
                         <label class="block text-xs font-medium text-gray-600 mb-1" for="start_date">From</label>
                         <input type="date" id="start_date" name="start_date" value="{{ $filters['start_date'] ?? '' }}"
@@ -107,6 +117,15 @@
                             <option value="">All</option>
                             @foreach ($punchTypes as $value => $label)
                                 <option value="{{ $value }}" @selected(($filters['punch_type'] ?? '') === $value)>{{ $label }}</option>
+                            @endforeach
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-xs font-medium text-gray-600 mb-1" for="attendance_status">Status</label>
+                        <select id="attendance_status" name="attendance_status" class="w-full border-gray-300 border rounded-md px-3 py-2 text-sm">
+                            <option value="">All</option>
+                            @foreach ($statuses as $value => $label)
+                                <option value="{{ $value }}" @selected(($filters['attendance_status'] ?? '') === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                     </div>
@@ -190,6 +209,11 @@
                                         <span class="inline-flex px-2 py-1 text-xs font-semibold rounded-full {{ $typeColors[$log->punch_type] ?? 'bg-gray-100 text-gray-800' }}">
                                             {{ $log->punch_type_label }}
                                         </span>
+                                        @if ($log->attendance_status)
+                                            <span class="inline-flex ml-1 px-2 py-1 text-xs font-semibold rounded-full {{ $statusColors[$log->attendance_status] ?? 'bg-gray-100 text-gray-800' }}">
+                                                {{ $log->attendance_status_label }}
+                                            </span>
+                                        @endif
                                     </td>
                                     <td class="px-6 py-3 whitespace-nowrap text-sm text-gray-900">
                                         {{ ucfirst(str_replace('_', ' ', $log->verification_type ?? 'unknown')) }}

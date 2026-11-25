@@ -29,6 +29,13 @@ The device sends each punch to this app as it happens (ZKTeco "ADMS" / push prot
    Server Port = the port from step 3. The device calls `/iclock/cdata`, `/iclock/getrequest` and `/iclock/devicecmd`.
 5. Open `/attendance` and log in. The device appears under **Devices** on its first connection.
 
+Check-in / check-out from the time of day (face devices usually send "check-in" for every punch):
+punches up to and including 12:00 are **Check-In**, marked **Late** after 09:30; later punches are **Check-Out**,
+marked **Early leave** before 18:00. Break and overtime keys pressed on the device are kept. Change the times with
+`ATTENDANCE_LATE_AFTER`, `ATTENDANCE_CHECK_IN_UNTIL`, `ATTENDANCE_CHECK_OUT_FROM` (or turn the rules off with
+`ATTENDANCE_TIME_RULES=false`), then run `php artisan attendance:reclassify` to apply them to stored punches
+(`--dry-run` to preview, `--from=YYYY-MM-DD` to limit).
+
 Names: when a device first connects it is asked for its user list, and every user enrolled or edited on the
 device is sent automatically. Names, card numbers and roles appear under **Employees**, where department,
 designation, phone and email can be added. Use **Fetch names from devices** to ask again. Passwords and

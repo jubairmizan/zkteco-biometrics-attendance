@@ -201,7 +201,8 @@ class ZktecoAdmsController extends Controller
             $name = $log->person_name;
             $who = $name ? "{$name} (PIN {$log->device_user_id})" : "PIN {$log->device_user_id}";
             $method = ucfirst(str_replace('_', ' ', (string) $log->verification_type));
-            $row = "\n• {$who} | {$log->punch_time->format('Y-m-d H:i:s')} | {$log->punch_type_label} | {$method}";
+            $flag = $log->attendance_status_label ? " ({$log->attendance_status_label})" : '';
+            $row = "\n• {$who} | {$log->punch_time->format('Y-m-d H:i:s')} | {$log->punch_type_label}{$flag} | {$method}";
 
             // Stop on a whole line, and say how many were left out, instead of cutting mid-line
             if (mb_strlen($text . $row) > self::TELEGRAM_MAX_LENGTH) {
